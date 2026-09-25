@@ -994,7 +994,8 @@ function drawRC(a, T, logW, phase){
   ];
   /* transfer arrows */
   const arrows=[[R.p680,R.pheo],[R.pheo,R.qa],[R.qa,R.qb],[R.oec,R.yz],[R.yz,R.p680]];
-  g.strokeStyle=hexa('#8fb6ff',.45); g.lineWidth=Math.max(px(6e-11),.8); g.setLineDash([px(1.4e-10),px(1.2e-10)]);
+  g.strokeStyle=hexa('#8fb6ff',.45); g.lineWidth=clamp(px(6e-11),.8,3.2);
+  g.setLineDash([clamp(px(1.4e-10),3,11), clamp(px(1.2e-10),2.5,9)]);
   for(const [p,q] of arrows){ g.beginPath(); g.moveTo(sx(p.x),sy(p.y)); g.lineTo(sx(q.x),sy(q.y)); g.stroke(); }
   g.setLineDash([]);
   for(const c of chain){
@@ -1009,7 +1010,7 @@ function drawRC(a, T, logW, phase){
     label(c.p.x, c.p.y, c.n+'  ·  '+c.note, {a:a*0.95, dx: c.p.x<0?-30:30, dy: c.p.y>3e-9?-20:20, size:10.5, c:c.c});
   }
   /* the Mn cluster, until the layer below takes it over */
-  if(logW > -8.90){
+  if(logW > -8.60){
     dot(0,0,0.28e-9,hexa(P.mn,.95),2.2);
     label(0,0,'Mn₄CaO₅', {a:a*0.95, dx:-34, dy:26, c:P.mn, size:10.5});
   }
