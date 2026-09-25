@@ -1,0 +1,1473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>One Photon</title>
+<meta name="description" content="A single continuous zoom from a sunlit leaf to the manganese cluster that splits water — nine orders of magnitude, no cuts.">
+<style>
+  :root{
+    --ink:#e8f6f1; --dim:#8fb3ad; --rule:rgba(232,246,241,.16);
+    --bg:#05080b; --accent:#7fe3b0; --warm:#ffd98a;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;height:100%;background:var(--bg);color:var(--ink);font-family:var(--sans);overflow:hidden}
+  canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh}
+
+  .hud{position:fixed;inset:0;pointer-events:none;z-index:2}
+  .pad{position:absolute;padding:clamp(14px,2.2vw,28px)}
+
+  /* top-left: stage */
+  .stage{top:0;left:0;max-width:min(46ch,72vw);padding-right:72px;padding-bottom:30px;
+    background:linear-gradient(108deg,rgba(3,6,10,.90) 0%,rgba(3,6,10,.78) 48%,rgba(3,6,10,0) 100%)}
+  .stage .kicker{font-family:var(--mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--dim)}
+  .stage h1{margin:.35em 0 .1em;font-size:clamp(20px,3.4vw,34px);font-weight:600;letter-spacing:-.015em;line-height:1.08}
+  .stage .sub{color:var(--accent);font-size:clamp(12px,1.5vw,14px);font-weight:500;letter-spacing:.01em}
+  .stage .body{margin-top:.85em;font-size:clamp(12.5px,1.45vw,15px);line-height:1.55;color:#c8ded8;text-wrap:pretty}
+  .stage .fact{margin-top:.7em;font-family:var(--mono);font-size:11.5px;line-height:1.7;color:var(--warm);opacity:.92}
+
+  /* top-right: readout */
+  .read{top:0;right:0;text-align:right;padding-left:70px;padding-bottom:26px;
+    background:linear-gradient(252deg,rgba(3,6,10,.88) 0%,rgba(3,6,10,.70) 50%,rgba(3,6,10,0) 100%);font-family:var(--mono);font-size:11px;color:var(--dim);line-height:1.8}
+  .read b{display:block;color:var(--ink);font-size:15px;font-weight:600;letter-spacing:.01em}
+
+  /* bottom-left: scale bar */
+  .scale{bottom:52px;left:0}
+  .scale .bar{height:1px;background:var(--ink);position:relative;opacity:.85}
+  .scale .bar::before,.scale .bar::after{content:"";position:absolute;top:-4px;width:1px;height:9px;background:var(--ink)}
+  .scale .bar::before{left:0} .scale .bar::after{right:0}
+  .scale .num{margin-top:7px;font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;color:var(--ink)}
+
+  /* bottom bar: transport */
+  .transport{position:fixed;left:0;right:0;bottom:0;z-index:3;display:flex;align-items:center;gap:12px;
+    padding:10px clamp(14px,2.2vw,28px) 12px;background:linear-gradient(to top,rgba(5,8,11,.92),rgba(5,8,11,0));}
+  .transport button{pointer-events:auto;appearance:none;background:transparent;border:1px solid var(--rule);color:var(--ink);
+    font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;padding:7px 11px;border-radius:999px;cursor:pointer;
+    transition:border-color .2s,background .2s}
+  .transport button:hover{border-color:var(--accent);background:rgba(127,227,176,.08)}
+  .track{pointer-events:auto;position:relative;flex:1;height:22px;cursor:pointer;display:flex;align-items:center}
+  .track .line{position:absolute;left:0;right:0;height:2px;background:var(--rule);border-radius:2px}
+  .track .fill{position:absolute;left:0;height:2px;background:linear-gradient(90deg,var(--warm),var(--accent));border-radius:2px}
+  .track .tick{position:absolute;width:1px;height:8px;background:var(--rule);transform:translateX(-.5px)}
+  .track .knob{position:absolute;width:9px;height:9px;border-radius:50%;background:var(--ink);transform:translateX(-4.5px);box-shadow:0 0 12px rgba(127,227,176,.8)}
+  .tlabel{font-family:var(--mono);font-size:11px;color:var(--dim);min-width:8ch;text-align:right}
+
+  /* title card + end card */
+  .card{position:fixed;inset:0;z-index:4;display:flex;align-items:center;justify-content:center;
+    background:radial-gradient(60% 60% at 50% 45%,rgba(5,8,11,.72),rgba(5,8,11,.96));
+    opacity:0;pointer-events:none;transition:opacity 1.1s ease}
+  .card.on{opacity:1;pointer-events:auto}
+  .card .inner{max-width:min(64ch,84vw);text-align:center;padding:0 16px}
+  .card h2{font-size:clamp(22px,4.2vw,44px);font-weight:600;line-height:1.12;letter-spacing:-.02em;margin:0 0 .5em}
+  .card p{font-size:clamp(13px,1.7vw,17px);line-height:1.62;color:#cfe6e0;margin:0 0 1em;text-wrap:pretty}
+  .card .mono{font-family:var(--mono);font-size:12px;color:var(--warm);letter-spacing:.04em;line-height:1.9}
+  .card button{pointer-events:auto;margin-top:1.4em;appearance:none;background:transparent;border:1px solid var(--rule);
+    color:var(--ink);font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;
+    padding:11px 20px;border-radius:999px;cursor:pointer;transition:border-color .2s,background .2s}
+  .card button:hover{border-color:var(--accent);background:rgba(127,227,176,.08)}
+
+  @media (max-width:620px){
+    .stage{max-width:78vw}
+    .stage .body{display:none}
+    .read b{font-size:13px}
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div class="hud">
+  <div class="pad stage">
+    <div class="kicker" id="kicker">station 1 / 10</div>
+    <h1 id="title">A leaf in sunlight</h1>
+    <div class="sub" id="sub"></div>
+    <div class="body" id="body"></div>
+    <div class="fact" id="fact"></div>
+  </div>
+  <div class="pad read">
+    <span>field of view</span>
+    <b id="fov">10 cm</b>
+    <span id="power">10<sup>-1</sup> m</span>
+  </div>
+  <div class="pad scale">
+    <div class="bar" id="sbar" style="width:160px"></div>
+    <div class="num" id="snum">1 cm</div>
+  </div>
+</div>
+
+<div class="transport">
+  <button id="play">Pause</button>
+  <button id="back">&#8676;</button>
+  <button id="fwd">&#8677;</button>
+  <div class="track" id="track">
+    <div class="line"></div><div class="fill" id="fill"></div><div class="knob" id="knob"></div>
+  </div>
+  <button id="sound">Sound off</button>
+  <div class="tlabel" id="clock">0:00</div>
+</div>
+
+<div class="card on" id="opencard">
+  <div class="inner">
+    <h2>One Photon</h2>
+    <p>A single continuous zoom from a sunlit leaf down to the four manganese atoms that take an oxygen molecule out of water. Nine orders of magnitude. No cuts.</p>
+    <div class="mono">10<sup>-1</sup> m &rarr; 10<sup>-10</sup> m &nbsp;&middot;&nbsp; about two minutes</div>
+    <button id="startbtn">Begin the descent</button>
+  </div>
+</div>
+
+<div class="card" id="endcard">
+  <div class="inner">
+    <h2>You are breathing it now.</h2>
+    <p>Every O&#8322; molecule in the air in your lungs was pulled out of water by a cluster of four manganese atoms half a nanometre wide, driven by four photons, in about a millisecond. The chloroplasts of the world do this on the order of 10<sup>11</sup> tonnes a year.</p>
+    <p>The photon that started this left the Sun's surface 8 minutes and 20 seconds ago. The energy it carried had been working its way out of the core for tens of thousands of years before that.</p>
+    <div class="mono">2 H&#8322;O &rarr; O&#8322; + 4 H&#8314; + 4 e&#8315;</div>
+    <button id="againbtn">Again</button>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ============================================================================
+   ONE PHOTON — a continuous nine-decade zoom through photosynthesis.
+   Everything is drawn in real metres. World origin (0,0) is the Mn4CaO5
+   cluster of the oxygen-evolving complex; every structure above it is placed
+   at its true size and a plausible relative position, so the scale bar and
+   the field-of-view readout are honest at every frame.
+   ========================================================================== */
+
+const cvs = document.getElementById('c');
+const g   = cvs.getContext('2d', { alpha:false });
+let W=0, H=0, DPR=1;
+const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function resize(){
+  DPR = Math.min(2, window.devicePixelRatio || 1);
+  W = window.innerWidth; H = window.innerHeight;
+  cvs.width = Math.round(W*DPR); cvs.height = Math.round(H*DPR);
+  cvs.style.width = W+'px'; cvs.style.height = H+'px';
+  g.setTransform(DPR,0,0,DPR,0,0);
+}
+addEventListener('resize', resize, {passive:true});
+resize();
+
+/* ---------- maths ---------- */
+const TAU = Math.PI*2;
+const clamp = (v,a,b)=> v<a?a:(v>b?b:v);
+const lerp  = (a,b,t)=> a+(b-a)*t;
+const smooth= t => t*t*(3-2*t);
+const smoother = t => t*t*t*(t*(t*6-15)+10);
+const inv   = (v,a,b)=> clamp((v-a)/(b-a),0,1);
+function hash(n){ const s = Math.sin(n*127.1)*43758.5453; return s-Math.floor(s); }
+function rnd(seed){ let s=seed>>>0; return ()=> (s = (s*1664525+1013904223)>>>0)/4294967296; }
+
+/* fade a layer in and out across a log-scale window [lo, hi] (metres, log10) */
+function band(logW, lo, hi, feather){
+  const f = feather===undefined ? 0.45 : feather;
+  return inv(logW, lo, lo+f) * (1 - inv(logW, hi-f, hi));
+}
+
+/* ---------- palette ---------- */
+const P = {
+  sky:'#0a141c', sun:'#ffdf9e', sunHot:'#fff6dd', sunGlow:'rgba(255,196,92,',
+  leaf:'#2f7b46', leafHi:'#6fbf5c', leafLo:'#12351f', vein:'#b9d98a',
+  cutin:'#cfe0b0', wall:'#8a7a55', wallLo:'#4a4128',
+  cyto:'#0d2a2a', vac:'#071e22',
+  envelope:'#7fd8c0', stroma:'#0c3330', stromaHi:'#14514a',
+  thyl:'#2fbf82', thylLo:'#0f5f48', lumen:'#241a3f', lumenHi:'#3a2a63',
+  lipidHead:'#f0c878', lipidTail:'rgba(240,200,120,.22)',
+  prot:'#4f9fc4', protLo:'#1b4f6b', protHi:'#8fd6ee',
+  lhc:'#2f9f6a', chl:'#58e39a', chlDeep:'#0e7d55',
+  photon:'#fff2c2', exciton:'#ffd45e', charge:'#8fb6ff',
+  mn:'#d3607f', ca:'#efdca6', ox:'#ff6b5c', hy:'#dff0ff',
+  ink:'#e8f6f1', dim:'rgba(232,246,241,.55)', faint:'rgba(232,246,241,.22)'
+};
+
+/* ---------- the journey ---------- */
+/* logW = log10 of the field-of-view WIDTH in metres */
+const STATIONS = [
+  { id:'leaf', logW:-1.00, hold:7.5, travel:9.0,
+    title:'A leaf in sunlight',
+    sub:'Spinach blade · 9 cm · about 10¹⁴ photons landing on it every second',
+    body:'Sunlight arrives as a rain of photons. A leaf is an organ built to catch a very narrow slice of them — red around 680 nm and blue around 430 nm — and to spend that energy taking hydrogen off water. Everything below this frame exists to serve that one reaction.',
+    fact:'photon flight time from the Sun · 8 min 20 s' },
+
+  { id:'section', logW:-3.45, hold:7.0, travel:5.0,
+    title:'Through the epidermis',
+    sub:'Cut-away · leaf thickness ≈ 165 µm',
+    body:'The blade opens into cross-section. A waxy cuticle, then one layer of transparent epidermis that acts as a window, then the palisade mesophyll — columnar cells stood on end like a photovoltaic array. Below them the spongy mesophyll and its air spaces, and a stoma: the pore the oxygen will eventually leave through.',
+    fact:'epidermis is nearly chlorophyll-free · it is glass, not solar cell' },
+
+  { id:'cell', logW:-4.35, hold:6.0, travel:5.0,
+    title:'One palisade cell',
+    sub:'≈ 20 µm wide, 60 µm tall · 40–100 chloroplasts',
+    body:'A central vacuole presses the cytoplasm into a thin shell against the wall, which is exactly where the chloroplasts want to be. They are not static: they stream around the periphery, and in harsh light they turn edge-on to each other to shade themselves.',
+    fact:'chloroplast avoidance movement · minutes, driven by phototropin' },
+
+  { id:'chloroplast', logW:-5.25, hold:6.5, travel:5.5,
+    title:'Inside a chloroplast',
+    sub:'5 µm × 2.5 µm · a captured cyanobacterium',
+    body:'Two envelope membranes, a legacy of the endosymbiosis that folded a free-living cyanobacterium into a plant cell somewhere around 1.5 billion years ago. It still carries its own circular genome. Inside: stroma, starch grains, and the thylakoids — a single connected membrane system folded into stacks called grana.',
+    fact:'chloroplast genome · ≈ 120–160 kb, ≈ 100 genes left of several thousand' },
+
+  { id:'granum', logW:-6.20, hold:6.5, travel:5.5,
+    title:'A granum',
+    sub:'≈ 14 stacked discs · 450 nm across · 17.5 nm repeat',
+    body:'Thylakoid discs pressed face to face, the gap between them barely 3 nm. The stacking is not decorative: it sorts the machinery. Photosystem II crowds into the appressed core; photosystem I and ATP synthase are too tall to fit and are pushed out to the unstacked margins and the lamellae that spiral between grana.',
+    fact:'lumen pH ≈ 5 in the light · stroma pH ≈ 8 · that gradient makes the ATP' },
+
+  { id:'membrane', logW:-7.00, hold:7.0, travel:4.5,
+    title:'The thylakoid membrane',
+    sub:'Lipid bilayer, 4 nm thick · protein-saturated',
+    body:'Less lipid than protein by mass. Photosystem II sits with its water-splitting end in the lumen and its quinone end in the stroma, wrapped in light-harvesting complexes. A photon is arriving.',
+    fact:'≈ 70% of this membrane’s area is protein, not lipid' },
+
+  { id:'psii', logW:-7.55, hold:7.5, travel:4.5,
+    title:'Photosystem II',
+    sub:'C₂S₂ supercomplex · ≈ 30 nm · ≈ 250 chlorophylls per monomer',
+    body:'An antenna, not a lens. The photon is absorbed by any one of hundreds of chlorophylls in the light-harvesting complexes, and the excitation then migrates by resonance energy transfer — not as a particle bouncing, but as a coupled excited state sampling the array — downhill toward the one pair of chlorophylls that can do chemistry.',
+    fact:'hop time ≈ 100 fs–1 ps · reaches the reaction centre in a few hundred ps' },
+
+  { id:'rc', logW:-8.05, hold:8.0, travel:4.5,
+    title:'Charge separation',
+    sub:'P680 · pheophytin · Qₐ · Q_B',
+    body:'The excited special pair hands an electron to a pheophytin 1.1 nm away in about 3 picoseconds, then onward to a bound quinone. That single step is where light stops being light and becomes chemistry, and it runs at better than 90% quantum efficiency. What is left behind, P680⁺, is the most powerful oxidant biology makes.',
+    fact:'P680⁺ ≈ +1.25 V · enough to tear electrons off water at +0.82 V' },
+
+  { id:'oec', logW:-8.80, hold:8.5, travel:4.0,
+    title:'The oxygen-evolving complex',
+    sub:'Mn₄CaO₅ · ≈ 0.5 nm · the only thing on Earth that does this',
+    body:'A distorted chair of four manganese atoms, one calcium and five bridging oxygens. It cannot run on one photon, so it counts: each charge separation ratchets it one step up the Kok cycle, S₀ through S₄, storing four oxidising equivalents. On the fourth, two substrate waters are joined and an O–O bond forms.',
+    fact:'S₃ → S₀ is rate-limiting · ≈ 1.3 ms · four photons per O₂' },
+
+  { id:'o2', logW:-9.05, hold:7.0, travel:5.0,
+    title:'2 H₂O → O₂ + 4 H⁺ + 4 e⁻',
+    sub:'O–O bond length 121 pm · a ground-state triplet',
+    body:'The oxygen leaves. The four protons are dumped into the lumen, where they join the gradient that will drive ATP synthase. The four electrons go on down the chain to photosystem I and end up on NADP⁺. And the O₂ simply diffuses out — through the stroma, the cell, the air spaces, the stoma, the sky.',
+    fact:'this waste product is why there is an ozone layer' }
+];
+
+/* build the timeline */
+let TOTAL = 0;
+STATIONS.forEach((s,i)=>{ s.t0 = TOTAL; TOTAL += s.hold; s.t1 = TOTAL; if(i<STATIONS.length-1) TOTAL += s.travel; });
+const OUTRO = 7.0;               /* pull-back */
+const RUN   = TOTAL + OUTRO;
+
+/* camera: time -> log10(field of view width, metres) */
+function logWAt(t){
+  if(t >= TOTAL){                                   /* outro: rush back out */
+    const k = smoother(inv(t, TOTAL, TOTAL+OUTRO*0.85));
+    return lerp(STATIONS[STATIONS.length-1].logW, -1.0, k);
+  }
+  for(let i=0;i<STATIONS.length;i++){
+    const s = STATIONS[i];
+    if(t <= s.t1) return s.logW;
+    const n = STATIONS[i+1];
+    if(!n) return s.logW;
+    if(t < n.t0) return lerp(s.logW, n.logW, smoother(inv(t, s.t1, n.t0)));
+  }
+  return STATIONS[STATIONS.length-1].logW;
+}
+function stationAt(t){
+  let idx = 0, blend = 0;
+  for(let i=0;i<STATIONS.length;i++){
+    const s = STATIONS[i], n = STATIONS[i+1];
+    if(t <= s.t1 || !n){ idx=i; blend=0; break; }
+    if(t < n.t0){ const k=inv(t,s.t1,n.t0); idx = k<0.5 ? i : i+1; blend = k<0.5 ? k*2 : (1-k)*2; break; }
+  }
+  if(t>=TOTAL) { idx = STATIONS.length-1; blend = inv(t, TOTAL, TOTAL+2); }
+  return {idx, fade: 1-clamp(blend,0,1)};
+}
+
+/* Camera path. The zoom is one continuous dolly, but each decade needs its own
+   framing, so the camera centre is interpolated against log-scale rather than time --
+   which also means the pull-back at the end rewinds along exactly the same path. */
+const ANCHORS = [
+  { logW:-1.00, x: 1.00e-2,  y: 4.0e-3  },
+  { logW:-3.45, x: 6.00e-6,  y:-2.2e-5  },
+  { logW:-4.35, x:-1.00e-6,  y: 2.0e-6  },
+  { logW:-5.25, x:-1.40e-6,  y: 6.0e-7  },
+  { logW:-6.20, x: 6.00e-8,  y:-2.0e-8  },
+  { logW:-7.00, x:-2.20e-8,  y: 2.4e-9  },
+  { logW:-7.55, x:-5.00e-9,  y: 2.4e-9  },
+  { logW:-8.05, x: 0,        y: 2.2e-9  },
+  { logW:-8.80, x:-4.00e-11, y: 0       },
+  { logW:-9.05, x:-1.20e-10, y:-9.0e-11 }
+];
+function camAt(logW){
+  if(logW >= ANCHORS[0].logW) return ANCHORS[0];
+  const last = ANCHORS[ANCHORS.length-1];
+  if(logW <= last.logW) return last;
+  for(let i=0;i<ANCHORS.length-1;i++){
+    const a=ANCHORS[i], b=ANCHORS[i+1];
+    if(logW <= a.logW && logW > b.logW){
+      const u = smoother((a.logW-logW)/(a.logW-b.logW));
+      return { x: lerp(a.x,b.x,u), y: lerp(a.y,b.y,u) };
+    }
+  }
+  return last;
+}
+
+/* ---------- projection: world metres -> screen pixels ---------- */
+let mpp = 1;                       /* metres per CSS pixel */
+let camX = 0, camY = 0;            /* camera centre, metres */
+const sx = xm => W*0.5 + (xm-camX)/mpp;
+const sy = ym => H*0.5 - (ym-camY)/mpp;
+const px = lm => lm/mpp;           /* length in metres -> pixels */
+function onScreen(xm, ym, rm){
+  const r = px(rm)+40;
+  const X = sx(xm), Y = sy(ym);
+  return X > -r && X < W+r && Y > -r && Y < H+r;
+}
+
+/* ---------- small drawing helpers ---------- */
+if(!CanvasRenderingContext2D.prototype.roundRect){
+  CanvasRenderingContext2D.prototype.roundRect = function(x,y,w,h,r){
+    r = Math.min(Math.abs(r)||0, Math.abs(w)/2, Math.abs(h)/2);
+    this.moveTo(x+r,y); this.arcTo(x+w,y,x+w,y+h,r); this.arcTo(x+w,y+h,x,y+h,r);
+    this.arcTo(x,y+h,x,y,r); this.arcTo(x,y,x+w,y,r); this.closePath(); return this;
+  };
+}
+function glow(x,y,r,c0,c1){
+  const gr = g.createRadialGradient(x,y,0,x,y,Math.max(r,0.01));
+  gr.addColorStop(0,c0); gr.addColorStop(1,c1); return gr;
+}
+function dot(xm,ym,rm,fill,glowPx){
+  const X=sx(xm), Y=sy(ym), R=Math.max(px(rm),0.4);
+  if(glowPx && R*glowPx > 1.5){
+    const GR = Math.min(R*glowPx, 46);
+    const c0 = fill[0]==='#' ? hexa(fill,.42) : fill;
+    const c1 = fill[0]==='#' ? hexa(fill,0)   : 'rgba(0,0,0,0)';
+    g.globalCompositeOperation='lighter';
+    g.fillStyle = glow(X,Y,GR,c0,c1);
+    g.beginPath(); g.arc(X,Y,GR,0,TAU); g.fill();
+    g.globalCompositeOperation='source-over';
+  }
+  g.fillStyle=fill; g.beginPath(); g.arc(X,Y,R,0,TAU); g.fill();
+}
+function hexa(hex,a){
+  const h = hex.replace('#','');
+  const n = h.length===3 ? h.split('').map(c=>c+c).join('') : h;
+  const r=parseInt(n.slice(0,2),16), gg=parseInt(n.slice(2,4),16), b=parseInt(n.slice(4,6),16);
+  return 'rgba('+r+','+gg+','+b+','+a+')';
+}
+function ellipse(xm,ym,rxm,rym,rot){
+  g.beginPath(); g.ellipse(sx(xm),sy(ym),Math.max(px(rxm),.3),Math.max(px(rym),.3),rot||0,0,TAU);
+}
+function rectM(xm,ym,wm,hm){ g.beginPath(); g.rect(sx(xm),sy(ym),px(wm),px(hm)); }
+
+/* labels: world-anchored, with a leader line */
+let labelBudget = [];
+function label(xm, ym, text, opt){
+  const o = opt||{};
+  const a = (o.a===undefined?1:o.a);
+  if(a<=0.03) return;
+  const X = sx(xm), Y = sy(ym);
+  if(X<-200||X>W+200||Y<-100||Y>H+100) return;
+  labelBudget.push({X,Y,text,a,dx:o.dx||34,dy:o.dy||-24,size:o.size||11.5,c:o.c||P.ink,mono:o.mono!==false,align:o.align});
+}
+function flushLabels(){
+  g.save();
+  for(const L of labelBudget){
+    const tx = L.X + L.dx, ty = L.Y + L.dy;
+    g.globalAlpha = L.a*0.55;
+    g.strokeStyle = P.ink; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(L.X, L.Y);
+    g.lineTo(tx - Math.sign(L.dx)*6, ty + (L.dy<0? 5 : -5));
+    g.lineTo(tx, ty + (L.dy<0? 5 : -5));
+    g.stroke();
+    g.globalAlpha = L.a*0.9;
+    g.beginPath(); g.arc(L.X,L.Y,1.6,0,TAU); g.fillStyle=P.ink; g.fill();
+    g.globalAlpha = L.a;
+    g.font = (L.mono? '500 ':'600 ')+L.size+'px '+(L.mono?'ui-monospace, SFMono-Regular, Menlo, monospace':'Inter, system-ui, sans-serif');
+    g.textAlign = L.align || (L.dx<0?'right':'left');
+    g.textBaseline = 'bottom';
+    g.fillStyle = 'rgba(5,8,11,.72)';
+    const w = g.measureText(L.text).width;
+    const bx = (g.textAlign==='right') ? tx-w-4 : tx-4;
+    g.fillRect(bx, ty-L.size-3, w+8, L.size+6);
+    g.fillStyle = L.c;
+    g.fillText(L.text, tx, ty);
+  }
+  g.restore();
+  labelBudget = [];
+}
+
+/* ============================================================================
+   WORLD GEOMETRY — all in metres, origin at the Mn4CaO5 cluster.
+   ========================================================================== */
+const GEO = {
+  leaf:      { cx: 0.012, cy: 0.004, len: 0.092, wid: 0.048 },
+  cuticle:   { yTop: 5.5e-5, yBot: 5.2e-5 },
+  epidermis: { yTop: 5.2e-5, yBot: 3.4e-5 },
+  palisade:  { yTop: 3.2e-5, yBot: -3.2e-5, pitch: 2.1e-5 },
+  spongy:    { yTop: -3.4e-5, yBot: -9.2e-5 },
+  lowerEpi:  { yTop: -9.2e-5, yBot: -1.10e-4 },
+  stoma:     { x: 3.1e-5, y: -1.06e-4, gap: 6e-6 },
+  cell:      { cx: -2.0e-6, cy: 0, rx: 1.00e-5, ry: 3.00e-5, wall: 1.1e-6 },
+  chloro:    { cx: -1.60e-6, cy: 0.70e-6, rx: 2.50e-6, ry: 1.22e-6, rot: -0.28 },
+  granum:    { cx: 0.80e-7, discR: 2.25e-7, n: 14, pitch: 1.75e-8, lumen: 6.0e-9, memb: 4.0e-9, y0: 2.4e-9 },
+  memb:      { mid: 2.4e-9, half: 2.0e-9 },       /* our thylakoid membrane */
+  psii:      { cx: 0, cy: 2.4e-9, coreW: 1.05e-8, coreH: 5.4e-9 },
+  rc: {
+    oec:  {x: 0,        y: 0},
+    yz:   {x: 0.10e-9,  y: 1.05e-9},
+    p680: {x: 0.00e-9,  y: 2.20e-9},
+    pheo: {x: 0.95e-9,  y: 3.25e-9},
+    qa:   {x: 1.15e-9,  y: 4.55e-9},
+    qb:   {x:-1.35e-9,  y: 4.60e-9}
+  }
+};
+
+/* deterministic scatter tables, built once */
+const RG = rnd(20260925);
+const GRANA = [];                                  /* other grana in the chloroplast */
+for(let i=0;i<22;i++){
+  const a = RG()*TAU, r = Math.sqrt(RG());
+  GRANA.push({ x: GEO.chloro.cx + Math.cos(a)*r*GEO.chloro.rx*0.78,
+               y: GEO.chloro.cy + Math.sin(a)*r*GEO.chloro.ry*0.70,
+               n: 6+Math.floor(RG()*10), w: (1.6+RG()*1.2)*2.25e-7, tilt:(RG()-0.5)*0.5 });
+}
+const CHLOROS = [];                                /* other chloroplasts in the cell */
+for(let i=0;i<34;i++){
+  const th = (i/34)*TAU + RG()*0.1;
+  const rr = 0.88 + RG()*0.07;
+  CHLOROS.push({ x: GEO.cell.cx + Math.cos(th)*GEO.cell.rx*rr,
+                 y: GEO.cell.cy + Math.sin(th)*GEO.cell.ry*rr,
+                 rot: th + Math.PI/2 + (RG()-0.5)*0.5, s: 0.85+RG()*0.3 });
+}
+
+/* ============================================================================
+   LAYER 1 — the leaf, face on, opening into cross-section
+   ========================================================================== */
+function drawLeafDetail(a, logW){
+  /* minor veins enclose areoles roughly 0.3-1 mm across */
+  const vA = a * clamp((-logW - 1.10)/0.45, 0, 1);
+  const order = (cell, alpha, wid, seed) => {
+    const i0=Math.floor((camX-mpp*W*0.6)/cell), i1=Math.ceil((camX+mpp*W*0.6)/cell);
+    const j0=Math.floor((camY-mpp*H*0.6)/cell), j1=Math.ceil((camY+mpp*H*0.6)/cell);
+    if((i1-i0+1)*(j1-j0+1) > 2600 || px(cell) < 7) return;
+    const pt=(i,j)=>({ x:(i+(hash(i*31.1+j*17.7+seed)-0.5)*0.6)*cell,
+                       y:(j+(hash(i*13.3+j*41.9+seed)-0.5)*0.6)*cell });
+    g.strokeStyle=hexa(P.vein, alpha); g.lineWidth=Math.max(px(cell)*wid, 0.7);
+    for(let i=i0;i<=i1;i++) for(let j=j0;j<=j1;j++){
+      const A=pt(i,j);
+      for(const d of [[1,0],[0,1],[1,1]]){
+        const B=pt(i+d[0],j+d[1]);
+        g.beginPath(); g.moveTo(sx(A.x),sy(A.y));
+        g.quadraticCurveTo(sx((A.x+B.x)/2+(hash(i*5+j*3+seed)-0.5)*cell*0.22),
+                           sy((A.y+B.y)/2+(hash(i*9+j*2+seed)-0.5)*cell*0.22),
+                           sx(B.x),sy(B.y));
+        g.stroke();
+      }
+    }
+  };
+  if(vA > 0.02){
+    order(3.6e-3, .26*vA, .016, 0);      /* secondary veins */
+    order(6.0e-4, .30*vA, .022, 91.3);   /* minor veins, enclosing the areoles */
+  }
+  /* mesophyll mottle, resolving into individual cells as we close in */
+  const mA = a * clamp((-logW - 1.95)/0.45, 0, 1);
+  if(mA > 0.02){
+    const cellS = 7.0e-5, r = px(cellS)*0.34;
+    if(r > 0.7 && r < 400){
+      const i0=Math.floor((camX-mpp*W*0.55)/cellS), i1=Math.ceil((camX+mpp*W*0.55)/cellS);
+      const j0=Math.floor((camY-mpp*H*0.55)/cellS), j1=Math.ceil((camY+mpp*H*0.55)/cellS);
+      if((i1-i0+1)*(j1-j0+1) < 4200){
+        for(let i=i0;i<=i1;i++) for(let j=j0;j<=j1;j++){
+          const h1=hash(i*7.7+j*3.3), h2=hash(i*2.9+j*11.1);
+          g.fillStyle=hexa(h1>0.55?'#1c5c33':'#4f9e4a', (.16+.22*h2)*mA);
+          g.beginPath(); g.arc(sx((i+h1*0.7)*cellS), sy((j+h2*0.7)*cellS), r*(0.7+0.5*h1), 0, TAU); g.fill();
+        }
+      }
+    }
+  }
+}
+
+function drawLeaf(a, T, logW){
+  const L = GEO.leaf;
+  /* sky / sun wash */
+  const sun = g.createLinearGradient(0,0,0,H);
+  sun.addColorStop(0, hexa('#ffca6a', .22*a));
+  sun.addColorStop(.45, hexa('#1d3a2c', .10*a));
+  sun.addColorStop(1, hexa('#04070a', 0));
+  g.fillStyle = sun; g.fillRect(0,0,W,H);
+
+  /* blade */
+  const cx = sx(L.cx), cy = sy(L.cy), lw = px(L.len), lh = px(L.wid);
+  g.save();
+  g.globalAlpha = a;
+  g.translate(cx, cy); g.rotate(-0.22);
+  const bl = g.createLinearGradient(-lw/2,-lh/2,lw/2,lh/2);
+  bl.addColorStop(0, P.leafLo); bl.addColorStop(.42, P.leaf); bl.addColorStop(1, P.leafHi);
+  g.fillStyle = bl;
+  g.beginPath();
+  g.moveTo(-lw*0.52, 0);
+  g.bezierCurveTo(-lw*0.22, -lh*0.62, lw*0.26, -lh*0.55, lw*0.52, 0);
+  g.bezierCurveTo(lw*0.26,  lh*0.55, -lw*0.22,  lh*0.62, -lw*0.52, 0);
+  g.closePath(); g.fill();
+  /* midrib + veins */
+  g.strokeStyle = hexa(P.vein,.55); g.lineWidth = Math.max(lw*0.006,1);
+  g.beginPath(); g.moveTo(-lw*0.5,0); g.lineTo(lw*0.5,0); g.stroke();
+  g.lineWidth = Math.max(lw*0.0028,.6); g.strokeStyle = hexa(P.vein,.34);
+  for(let i=-6;i<=6;i++){
+    if(!i) continue;
+    const t = i/7, x0 = t*lw*0.44, s = Math.sign(i);
+    g.beginPath(); g.moveTo(x0,0);
+    g.quadraticCurveTo(x0+lw*0.10, s*lh*0.18, x0+lw*0.16, s*lh*0.34);
+    g.stroke();
+  }
+  /* specular sheen */
+  g.globalCompositeOperation='lighter';
+  g.fillStyle = glow(-lw*0.1,-lh*0.2, lw*0.5, hexa('#eaffd0',.16*a), hexa('#eaffd0',0));
+  g.beginPath(); g.ellipse(-lw*0.1,-lh*0.2,lw*0.5,lh*0.5,0,0,TAU); g.fill();
+  g.globalCompositeOperation='source-over';
+  g.restore();
+
+  drawLeafDetail(a, logW);
+
+  /* sunbeams */
+  g.save(); g.globalCompositeOperation='lighter'; g.globalAlpha = a*0.55;
+  for(let i=0;i<7;i++){
+    const o = hash(i*3.1)*W, sw = 40+hash(i*7.7)*110;
+    const drift = Math.sin(T*0.13 + i)*26;
+    const lg = g.createLinearGradient(o+drift,0,o+drift+sw*0.7,H);
+    lg.addColorStop(0, hexa('#ffe6ae',.10)); lg.addColorStop(1, hexa('#ffe6ae',0));
+    g.fillStyle = lg;
+    g.beginPath(); g.moveTo(o+drift,0); g.lineTo(o+drift+sw,0);
+    g.lineTo(o+drift+sw*1.8,H); g.lineTo(o+drift+sw*0.8,H); g.closePath(); g.fill();
+  }
+  g.restore();
+
+  if(a>0.35){
+    label(L.cx + L.len*0.22, L.cy - L.wid*0.18, 'leaf blade', {a:(a-0.35)*1.4, dx:38, dy:-30});
+    label(L.cx - L.len*0.30, L.cy + L.wid*0.02, 'midrib', {a:(a-0.35)*1.4, dx:-34, dy:26});
+  }
+}
+
+/* ============================================================================
+   LAYER 2 — leaf cross-section: cuticle, epidermis, palisade, spongy, stoma
+   ========================================================================== */
+function drawSection(a, T, logW){
+  const S=GEO, xL = camX - mpp*W*0.62, xR = camX + mpp*W*0.62;
+  g.save(); g.globalAlpha = a;
+
+  /* air above the leaf */
+  const air = g.createLinearGradient(0, sy(S.cuticle.yTop+4e-5), 0, sy(S.cuticle.yTop));
+  air.addColorStop(0, hexa('#ffca6a',.16)); air.addColorStop(1, hexa('#ffca6a',.02));
+  g.fillStyle = air; g.fillRect(0, sy(S.cuticle.yTop+4e-5), W, px(4e-5));
+
+  /* helper: a row of cells drawn as rounded bricks */
+  const brick=(y0,y1,pitch,fill,stroke,jit)=>{
+    const h=y0-y1;
+    for(let x=Math.floor(xL/pitch)*pitch; x<xR; x+=pitch){
+      const j = (hash(x*1e6)-0.5)*jit*pitch;
+      const X=sx(x), Yt=sy(y0), Ww=px(pitch), Hh=px(h);
+      g.beginPath();
+      const r = Math.min(Ww,Hh)*0.28;
+      g.roundRect(X+1, Yt+1+j*0.2, Ww-2, Hh-2, r);
+      g.fillStyle=fill; g.fill();
+      if(stroke){ g.strokeStyle=stroke; g.lineWidth=Math.max(px(3e-7),.7); g.stroke(); }
+    }
+  };
+
+  /* cuticle */
+  g.fillStyle = hexa(P.cutin,.55);
+  g.fillRect(0, sy(S.cuticle.yTop), W, Math.max(px(S.cuticle.yTop-S.cuticle.yBot),1));
+  /* upper epidermis — transparent window cells */
+  brick(S.epidermis.yTop, S.epidermis.yBot, 2.6e-5, hexa('#bfe3d6',.16), hexa('#cfeadd',.34), .0);
+  /* palisade mesophyll */
+  brick(S.palisade.yTop, S.palisade.yBot, S.palisade.pitch, hexa('#16402b',.75), hexa(P.wall,.45), .0);
+  /* chloroplasts speckled inside the palisade cells (only while coarse) */
+  const speck = inv(logW,-4.35,-3.95);
+  if(speck>0.02){
+    g.globalAlpha = a*speck;
+    for(let x=Math.floor(xL/S.palisade.pitch)*S.palisade.pitch; x<xR; x+=S.palisade.pitch){
+      for(let k=0;k<16;k++){
+        const hx = hash(x*1e6+k*13.7), hy = hash(x*1e6+k*29.3);
+        const cxm = x + S.palisade.pitch*(0.12+hx*0.76);
+        const cym = S.palisade.yBot + (S.palisade.yTop-S.palisade.yBot)*(0.05+hy*0.9);
+        ellipse(cxm,cym, 2.4e-6, 1.1e-6, hx*3);
+        g.fillStyle = hexa(P.thyl,.5); g.fill();
+      }
+    }
+    g.globalAlpha = a;
+  }
+  /* spongy mesophyll with air spaces */
+  const sp=S.spongy;
+  for(let x=Math.floor(xL/1.8e-5)*1.8e-5; x<xR; x+=1.8e-5){
+    for(let r=0;r<3;r++){
+      const hy = hash(x*1e6+r*51.1);
+      const cxm = x + 1.8e-5*(0.25+hy*0.5) + (r%2?9e-6:0);
+      const cym = sp.yTop - 9e-6 - r*1.9e-5;
+      ellipse(cxm,cym, 8.5e-6*(0.7+hy*0.5), 6.5e-6*(0.7+hash(x+r)*0.5), hy*3);
+      g.fillStyle = hexa('#16402b',.62); g.fill();
+      g.strokeStyle = hexa(P.wall,.4); g.lineWidth=Math.max(px(3e-7),.6); g.stroke();
+    }
+  }
+  /* lower epidermis + stoma */
+  brick(S.lowerEpi.yTop, S.lowerEpi.yBot, 2.4e-5, hexa('#bfe3d6',.14), hexa('#cfeadd',.3), .0);
+  const st=S.stoma;
+  g.fillStyle = '#05080b';
+  g.beginPath();
+  g.rect(sx(st.x-st.gap/2), sy(S.lowerEpi.yTop), px(st.gap), px(S.lowerEpi.yTop-S.lowerEpi.yBot));
+  g.fill();
+  for(const s of [-1,1]){
+    ellipse(st.x + s*st.gap*0.95, (S.lowerEpi.yTop+S.lowerEpi.yBot)/2, st.gap*0.85, (S.lowerEpi.yTop-S.lowerEpi.yBot)*0.55, 0);
+    g.fillStyle = hexa('#2f7b46',.7); g.fill();
+    g.strokeStyle = hexa('#8fd6b0',.45); g.lineWidth=Math.max(px(4e-7),.7); g.stroke();
+  }
+
+  const la = Math.max(0,(a-0.25))*1.35;
+  label(camX, S.cuticle.yTop, 'cuticle', {a:la, dx:-70, dy:-16});
+  label(camX - 2.0e-5, (S.epidermis.yTop+S.epidermis.yBot)/2, 'upper epidermis', {a:la, dx:-40, dy:-14});
+  label(camX + 2.4e-5, 1.6e-5, 'palisade mesophyll', {a:la, dx:44, dy:-18});
+  label(camX - 1.4e-5, -5.5e-5, 'spongy mesophyll', {a:la, dx:-44, dy:20});
+  label(st.x, st.y, 'stoma', {a:la*0.9, dx:40, dy:26, c:P.sun});
+  g.restore();
+}
+
+/* ============================================================================
+   LAYER 3 — one palisade cell
+   ========================================================================== */
+function drawCell(a, T, logW){
+  const C=GEO.cell;
+  g.save(); g.globalAlpha=a;
+  g.fillStyle=hexa('#123024',.30); g.fillRect(0,0,W,H);
+  /* neighbouring cells hinted */
+  for(const s of [-1,1]){
+    ellipse(C.cx + s*C.rx*2.15, C.cy, C.rx, C.ry, 0);
+    g.fillStyle=hexa('#0f2f22',.55); g.fill();
+    g.strokeStyle=hexa(P.wall,.35); g.lineWidth=Math.max(px(C.wall*0.6),1); g.stroke();
+  }
+  /* wall */
+  ellipse(C.cx, C.cy, C.rx+C.wall, C.ry+C.wall, 0);
+  g.fillStyle=hexa(P.wall,.42); g.fill();
+  g.strokeStyle=hexa(P.wallLo,.8); g.lineWidth=Math.max(px(2e-7),1); g.stroke();
+  /* cytoplasm + tonoplast + vacuole */
+  ellipse(C.cx, C.cy, C.rx, C.ry, 0);
+  g.fillStyle=P.cyto; g.fill();
+  ellipse(C.cx, C.cy, C.rx*0.80, C.ry*0.90, 0);
+  const vg = g.createRadialGradient(sx(C.cx),sy(C.cy),0,sx(C.cx),sy(C.cy),Math.max(px(C.rx),1));
+  vg.addColorStop(0, hexa('#08262c',.95)); vg.addColorStop(1, hexa('#0a2f33',.7));
+  g.fillStyle=vg; g.fill();
+  g.strokeStyle=hexa('#6fd8c8',.30); g.lineWidth=Math.max(px(1.2e-7),.8); g.stroke();
+  /* nucleus */
+  ellipse(C.cx - C.rx*0.55, C.cy + C.ry*0.30, 2.6e-6, 2.3e-6, .3);
+  g.fillStyle=hexa('#8fb6ff',.22); g.fill();
+  g.strokeStyle=hexa('#8fb6ff',.5); g.lineWidth=Math.max(px(1.2e-7),.7); g.stroke();
+  /* chloroplasts around the periphery, drifting (cytoplasmic streaming) */
+  const drift = REDUCED?0:T*0.035;
+  for(let i=0;i<CHLOROS.length;i++){
+    const c = CHLOROS[i];
+    const th = Math.atan2((c.y-C.cy)/C.ry,(c.x-C.cx)/C.rx) + drift;
+    const xm = C.cx + Math.cos(th)*C.rx*0.90, ym = C.cy + Math.sin(th)*C.ry*0.92;
+    if(!onScreen(xm,ym,3e-6)) continue;
+    ellipse(xm, ym, 2.5e-6*c.s, 1.22e-6*c.s, th+Math.PI/2);
+    const cg = g.createLinearGradient(sx(xm)-px(2.5e-6),sy(ym),sx(xm)+px(2.5e-6),sy(ym));
+    cg.addColorStop(0,P.chlDeep); cg.addColorStop(.5,P.thyl); cg.addColorStop(1,P.chlDeep);
+    g.fillStyle=cg; g.fill();
+  }
+  const la=Math.max(0,a-0.2)*1.3;
+  label(C.cx, C.cy - C.ry*0.2, 'central vacuole', {a:la, dx:-52, dy:-18});
+  label(C.cx + C.rx*0.98, C.cy - C.ry*0.30, 'cell wall', {a:la, dx:44, dy:-16});
+  label(C.cx - C.rx*0.55, C.cy + C.ry*0.30, 'nucleus', {a:la, dx:-42, dy:-16});
+  g.restore();
+}
+
+/* ============================================================================
+   LAYER 4 — the chloroplast
+   ========================================================================== */
+function drawChloroplast(a, T, logW){
+  const K=GEO.chloro;
+  g.save(); g.globalAlpha=a;
+  /* stroma body */
+  ellipse(K.cx,K.cy,K.rx,K.ry,K.rot);
+  const sg = g.createLinearGradient(sx(K.cx),sy(K.cy+K.ry),sx(K.cx),sy(K.cy-K.ry));
+  sg.addColorStop(0,P.stromaHi); sg.addColorStop(1,P.stroma);
+  g.fillStyle=sg; g.fill();
+  /* double envelope */
+  g.strokeStyle=hexa(P.envelope,.85); g.lineWidth=Math.max(px(7e-9),1.1); g.stroke();
+  ellipse(K.cx,K.cy,K.rx-2.4e-8,K.ry-2.4e-8,K.rot);
+  g.strokeStyle=hexa(P.envelope,.5); g.lineWidth=Math.max(px(7e-9),.9); g.stroke();
+  /* starch grain + plastoglobule */
+  ellipse(K.cx+1.05e-6,K.cy-0.42e-6,4.2e-7,3.0e-7,.4);
+  g.fillStyle=hexa('#dfe9ee',.5); g.fill();
+  ellipse(K.cx-1.55e-6,K.cy-0.55e-6,1.1e-7,1.1e-7,0);
+  g.fillStyle=hexa('#e8c15a',.6); g.fill();
+
+  /* grana stacks + stroma lamellae */
+  g.lineWidth=Math.max(px(4e-9),.8);
+  for(const q of GRANA){
+    if(!onScreen(q.x,q.y,q.w)) continue;
+    const hgt = q.n*GEO.granum.pitch;
+    g.save(); g.translate(sx(q.x),sy(q.y)); g.rotate(q.tilt);
+    for(let i=0;i<q.n;i++){
+      const yy = (i-(q.n-1)/2)*px(GEO.granum.pitch);
+      g.fillStyle = hexa(P.thyl,.85);
+      g.beginPath(); g.roundRect(-px(q.w)/2, yy-px(GEO.granum.memb*1.6)/2, px(q.w), Math.max(px(GEO.granum.memb*1.6),.8), 1);
+      g.fill();
+    }
+    g.restore();
+    /* a lamella spiralling off to a neighbour */
+    const nb = GRANA[(GRANA.indexOf(q)+5)%GRANA.length];
+    g.strokeStyle=hexa(P.thylLo,.55);
+    g.beginPath(); g.moveTo(sx(q.x+q.w/2), sy(q.y));
+    g.quadraticCurveTo(sx((q.x+nb.x)/2), sy((q.y+nb.y)/2 + 2e-7), sx(nb.x-nb.w/2), sy(nb.y));
+    g.stroke();
+  }
+  /* our granum, highlighted */
+  const G=GEO.granum;
+  const hy = G.n*G.pitch;
+  g.save(); g.globalCompositeOperation='lighter';
+  g.fillStyle = glow(sx(G.cx), sy(G.y0-hy*0.35), px(G.discR*2.2), hexa(P.chl,.22*a), hexa(P.chl,0));
+  g.beginPath(); g.arc(sx(G.cx), sy(G.y0-hy*0.35), px(G.discR*2.2),0,TAU); g.fill();
+  g.restore();
+
+  const la=Math.max(0,a-0.2)*1.3;
+  label(K.cx, K.cy+K.ry*0.86, 'outer + inner envelope', {a:la, dx:52, dy:-20});
+  label(K.cx+1.05e-6, K.cy-0.42e-6, 'starch grain', {a:la, dx:46, dy:22});
+  label(K.cx-1.9e-6, K.cy+0.2e-6, 'stroma', {a:la, dx:-40, dy:-16});
+  label(G.cx, G.y0-hy*0.35, 'granum', {a:la, dx:46, dy:-30, c:P.chl});
+  g.restore();
+}
+
+/* ============================================================================
+   LAYER 5 — the granum: a stack of thylakoid discs
+   ========================================================================== */
+function drawGranum(a, T, logW){
+  const G=GEO.granum;
+  a *= 0.34 + 0.66*inv(logW, -7.30, -6.50);   /* context, not subject, at membrane scale */
+  g.save(); g.globalAlpha=a;
+  const gapD = G.pitch - (G.memb*2 + G.lumen);
+  for(let i=-7;i<=6;i++){
+    const yMid = G.y0 - i*G.pitch;                     /* our membrane is i=0 top leaflet */
+    const yTopMemb = yMid, yLumTop = yMid - G.memb/2 - 0.0, yLumBot = yLumTop - G.lumen;
+    const yBotMemb = yLumBot - G.memb/2;
+    if(!onScreen(G.cx, yMid, G.discR*1.4)) continue;
+    const half = G.discR * (0.93 + 0.07*hash(i*7.3+2.1));
+    /* the appressed stromal gap above this disc */
+    g.fillStyle = hexa('#12514a',.20);
+    g.fillRect(sx(G.cx-half), sy(yMid + G.memb/2 + gapD), Math.max(px(half*2),1), Math.max(px(gapD),1));
+    /* lumen */
+    g.beginPath();
+    g.roundRect(sx(G.cx-half), sy(yLumTop), px(half*2), Math.max(px(G.lumen),1), Math.max(px(G.lumen)/2,1));
+    const lg = g.createLinearGradient(0, sy(yLumTop), 0, sy(yLumBot));
+    lg.addColorStop(0,P.lumenHi); lg.addColorStop(1,P.lumen);
+    g.fillStyle=lg; g.fill();
+    /* the two membranes of the disc */
+    for(const ym of [yTopMemb, yBotMemb]){
+      g.beginPath();
+      g.roundRect(sx(G.cx-half), sy(ym+G.memb/2), px(half*2), Math.max(px(G.memb),1), Math.max(px(G.memb)/2,1));
+      g.fillStyle = hexa(P.thyl,.92); g.fill();
+    }
+    /* protein studs in the membranes — PSII crowds the appressed core */
+    if(px(G.memb)>1.5){
+      const n = 26;
+      for(let k=0;k<n;k++){
+        const f = (k+0.5)/n, xm = G.cx - half + f*half*2;
+        const core = Math.abs(f-0.5) < 0.36;
+        const h2 = hash(i*91.3+k*7.7);
+        g.fillStyle = core ? hexa(P.prot,.85) : hexa(P.protHi,.6);
+        const hgt = core ? G.memb*1.5 : G.memb*1.1;
+        g.beginPath();
+        g.roundRect(sx(xm-G.memb*0.55), sy(yTopMemb+hgt*0.6+ (h2*0.2)*G.memb), Math.max(px(G.memb*1.1),1), Math.max(px(hgt),1), 1);
+        g.fill();
+      }
+    }
+  }
+  /* stroma lamella peeling off the margin */
+  g.strokeStyle=hexa(P.thyl,.6); g.lineWidth=Math.max(px(G.memb),1);
+  g.beginPath();
+  g.moveTo(sx(G.cx+G.discR), sy(G.y0-G.pitch*3));
+  g.quadraticCurveTo(sx(G.cx+G.discR*2.1), sy(G.y0-G.pitch*6), sx(G.cx+G.discR*1.2), sy(G.y0-G.pitch*9));
+  g.stroke();
+
+  const la=Math.max(0,a-0.2)*1.3;
+  label(G.cx-G.discR*0.75, G.y0-G.pitch*2-G.memb/2-G.lumen/2, 'lumen  pH ≈ 5', {a:la, dx:-40, dy:-16, c:'#c9b6ff'});
+  label(G.cx-G.discR*0.35, G.y0-G.pitch*1+G.memb, 'stroma gap ≈ 3 nm', {a:la, dx:-46, dy:24});
+  label(G.cx+G.discR*1.9, G.y0-G.pitch*6, 'stroma lamella → PSI', {a:la*0.85, dx:36, dy:-18});
+  label(G.cx, G.y0, 'thylakoid membrane', {a:la, dx:52, dy:-26, c:P.chl});
+  g.restore();
+}
+
+/* ============================================================================
+   LAYER 6 — the thylakoid membrane in cross-section
+   ========================================================================== */
+/* Only what can actually sit in an appressed grana membrane. Photosystem I and
+   ATP synthase are too tall for the 3.5 nm stromal gap and are excluded to the
+   unstacked margins and the stroma lamellae, off to the left of this frame. */
+const COMPLEXES = [
+  { x: -4.4e-8, w: 3.0e-8, h: 1.05e-8, up: 0.29, name:'photosystem II', kind:'psii2'},
+  { x: -2.2e-8, w: 1.0e-8, h: 0.75e-8, up: 0.30, name:'cytochrome b6f', kind:'b6f'  },
+  { x:  2.4e-8, w: 1.0e-8, h: 0.75e-8, up: 0.30, name:'cytochrome b6f', kind:'b6f'  },
+  { x:  4.6e-8, w: 3.0e-8, h: 1.05e-8, up: 0.29, name:'photosystem II', kind:'psii2'}
+];
+
+function drawMembrane(a, T, logW){
+  const M=GEO.memb, G=GEO.granum;
+  g.save(); g.globalAlpha=a;
+  const xL = camX - mpp*W*0.62, xR = camX + mpp*W*0.62;
+
+  /* thin washes for the two aqueous phases, confined to where they actually are:
+     the lumen is only ~6 nm deep and the appressed stromal gap ~3.5 nm. */
+  const lumD = GEO.granum.lumen, gapD = GEO.granum.pitch - (GEO.granum.memb*2 + GEO.granum.lumen);
+  const sg=g.createLinearGradient(0, sy(M.mid+M.half+gapD), 0, sy(M.mid+M.half));
+  sg.addColorStop(0, hexa('#12514a',.10)); sg.addColorStop(1, hexa('#12514a',.42));
+  g.fillStyle=sg; g.fillRect(0, sy(M.mid+M.half+gapD), W, Math.max(px(gapD),1));
+  const lg=g.createLinearGradient(0, sy(M.mid-M.half), 0, sy(M.mid-M.half-lumD));
+  lg.addColorStop(0, hexa(P.lumenHi,.50)); lg.addColorStop(1, hexa(P.lumen,.34));
+  g.fillStyle=lg; g.fillRect(0, sy(M.mid-M.half), W, Math.max(px(lumD),1));
+
+  /* bilayer: two rows of phospholipid heads with a tail region between */
+  g.fillStyle = hexa('#f0c878',.10);
+  g.fillRect(0, sy(M.mid+M.half), W, Math.max(px(M.half*2),1));
+  const headR = 3.6e-10, pitch = 8.2e-10;
+  if(px(pitch) > 1.1){
+    for(let x=Math.floor(xL/pitch)*pitch; x<xR; x+=pitch){
+      for(const s of [1,-1]){
+        const yH = M.mid + s*(M.half - headR);
+        dot(x, yH, headR, hexa(P.lipidHead,.85));
+        g.strokeStyle=hexa(P.lipidHead,.20); g.lineWidth=Math.max(px(1.4e-10),.5);
+        g.beginPath();
+        g.moveTo(sx(x-headR*0.4), sy(yH - s*headR));
+        g.quadraticCurveTo(sx(x-headR*0.9), sy(M.mid+s*M.half*0.2), sx(x-headR*0.3), sy(M.mid+s*headR*0.4));
+        g.moveTo(sx(x+headR*0.4), sy(yH - s*headR));
+        g.quadraticCurveTo(sx(x+headR*0.9), sy(M.mid+s*M.half*0.2), sx(x+headR*0.3), sy(M.mid+s*headR*0.4));
+        g.stroke();
+      }
+    }
+  } else {
+    for(const s of [1,-1]){
+      g.fillStyle=hexa(P.lipidHead,.8);
+      g.fillRect(0, sy(M.mid+s*(M.half-headR)+headR), W, Math.max(px(headR*2),1));
+    }
+  }
+
+  /* neighbouring integral complexes */
+  for(const c of COMPLEXES){
+    if(!onScreen(c.x, M.mid, c.w)) continue;
+    g.save();
+    const grd=g.createLinearGradient(0,sy(M.mid+c.h*c.up),0,sy(M.mid-c.h*(1-c.up)));
+    grd.addColorStop(0,P.protHi); grd.addColorStop(.5,P.prot); grd.addColorStop(1,P.protLo);
+    g.fillStyle=grd;
+    g.beginPath();
+    g.roundRect(sx(c.x-c.w/2), sy(M.mid+c.h*c.up), px(c.w), px(c.h), px(c.w*0.14));
+    g.fill();
+    if(c.kind==='atp'){
+      /* F1 head on the stromal side */
+      ellipse(c.x, M.mid + c.h*c.up + 5.5e-9, 6.0e-9, 5.0e-9, 0);
+      g.fillStyle=hexa(P.protHi,.9); g.fill();
+      g.strokeStyle=hexa('#dff6ff',.5); g.lineWidth=Math.max(px(3e-10),.6); g.stroke();
+    }
+    g.restore();
+    label(c.x, M.mid + c.h*c.up, c.name, {a:a*0.8, dx: c.x<0?-34:34, dy:-22, size:10.5});
+  }
+
+
+  const la=Math.max(0,a-0.25)*1.35;
+  label(camX - mpp*W*0.30, M.mid + M.half + 1.6e-8, 'stroma  pH ≈ 8', {a:la, dx:-30, dy:-14, c:'#9fe8d2'});
+  label(camX - mpp*W*0.30, M.mid - M.half - 1.6e-8, 'lumen  pH ≈ 5', {a:la, dx:-30, dy:20, c:'#c9b6ff'});
+  label(camX + mpp*W*0.34, M.mid, 'bilayer 4 nm', {a:la, dx:30, dy:-14});
+  label(camX - mpp*W*0.44, M.mid + 1.4e-8, '< margins: PSI, ATP synthase', {a:la*0.8, dx:26, dy:-14, size:10.5, c:P.dim});
+  g.restore();
+}
+
+/* ============================================================================
+   LAYER 7 — the photosystem II supercomplex, with its antenna
+   ========================================================================== */
+/* antenna chlorophyll positions, built once: two LHCII trimers + core antenna */
+const ANTENNA = [];
+(function buildAntenna(){
+  const R = rnd(4242);
+  const put=(cx,cy,n,rx,ry,tag)=>{
+    for(let i=0;i<n;i++){
+      const a=R()*TAU, r=Math.sqrt(R());
+      ANTENNA.push({ x: cx + Math.cos(a)*r*rx, y: cy + Math.sin(a)*r*ry, tag, ph: R()*TAU });
+    }
+  };
+  /* CP43 / CP47 core antenna, flanking the reaction centre */
+  put(-2.6e-9, GEO.psii.cy+0.2e-9, 14, 1.5e-9, 1.7e-9, 'core');
+  put( 2.8e-9, GEO.psii.cy+0.2e-9, 14, 1.5e-9, 1.7e-9, 'core');
+  /* LHCII S and M trimers to the left */
+  put(-9.5e-9, GEO.psii.cy, 24, 3.2e-9, 1.9e-9, 'lhc');
+  put(-1.62e-8, GEO.psii.cy+0.3e-9, 24, 3.2e-9, 1.9e-9, 'lhc');
+  /* minor antenna CP26/CP29 */
+  put(-6.0e-9, GEO.psii.cy-0.6e-9, 8, 1.2e-9, 1.4e-9, 'minor');
+})();
+/* The excitation's route in. ANTENNA index map, in build order:
+   0-13 CP43 | 14-27 CP47 | 28-51 LHCII-S | 52-75 LHCII-M | 76-83 CP26/CP29.
+   The walk runs outer LHCII -> inner LHCII -> minor antenna -> CP43 -> P680. */
+const WALK = [74, 68, 60, 55, 48, 40, 33, 30, 79, 10, 5, 2].filter(i=>i>=0 && i<ANTENNA.length);
+
+function chlHex(xm,ym,rm,al,warm){
+  const X=sx(xm), Y=sy(ym), R=Math.max(px(rm),1.0);
+  g.beginPath();
+  for(let k=0;k<6;k++){ const th=k*Math.PI/3+0.26, xx=X+Math.cos(th)*R, yy=Y+Math.sin(th)*R; k?g.lineTo(xx,yy):g.moveTo(xx,yy); }
+  g.closePath();
+  g.fillStyle = hexa(warm?'#79efb2':'#34c98a', Math.min(.92,.30*al)); g.fill();
+  if(R>3.2){
+    g.strokeStyle=hexa('#9ff7c8',Math.min(.95,.42*al)); g.lineWidth=Math.min(1.6,R*0.17); g.stroke();
+    g.fillStyle=hexa('#eafff5',Math.min(.9,.5*al));
+    g.beginPath(); g.arc(X,Y,Math.max(R*0.17,.8),0,TAU); g.fill();       /* the Mg */
+  }
+}
+function drawPSII(a, T, logW){
+  const chlA  = a * band(logW, -7.95, -6.70, 0.35);
+  const solid = 0.42 + 0.58*inv(logW, -8.70, -7.70);   /* the scaffold recedes up close */
+  const S=GEO.psii, M=GEO.memb;
+  g.save(); g.globalAlpha=a;
+  /* core dimer: our monomer at x=0, its partner to the right */
+  const monomer=(cx, mirror)=>{
+    g.save();
+    const grd=g.createLinearGradient(0,sy(M.mid+S.coreH*0.5),0,sy(M.mid-S.coreH*0.5));
+    grd.addColorStop(0,hexa(P.protHi,.75*solid)); grd.addColorStop(.55,hexa(P.prot,.85*solid)); grd.addColorStop(1,hexa(P.protLo,.95*solid));
+    g.fillStyle=grd;
+    g.beginPath();
+    g.roundRect(sx(cx-S.coreW/2), sy(M.mid+S.coreH*0.52), px(S.coreW), px(S.coreH), px(1.0e-9));
+    g.fill();
+    g.strokeStyle=hexa('#bfeaff',.30); g.lineWidth=Math.max(px(1.2e-10),.6); g.stroke();
+    /* transmembrane helices, hinted */
+    if(px(S.coreW) > 120){
+      g.save(); g.clip();
+      for(let k=0;k<11;k++){
+        const hx = cx - S.coreW*0.42 + (k/10)*S.coreW*0.84;
+        const jt = (hash(k*13.7+cx*1e9)-0.5)*0.8e-9;
+        g.fillStyle = hexa('#cdeeff', .07);
+        g.beginPath();
+        g.roundRect(sx(hx-0.28e-9), sy(M.mid+2.0e-9+jt), px(0.56e-9), px(4.2e-9), px(0.28e-9));
+        g.fill();
+      }
+      g.restore();
+    }
+    /* lumenal extrinsic cap (PsbO/P/Q) over the OEC */
+    g.beginPath();
+    g.roundRect(sx(cx-S.coreW*0.30), sy(M.mid-S.coreH*0.48), px(S.coreW*0.60), px(2.6e-9), px(0.8e-9));
+    g.fillStyle=hexa(P.protLo,.95); g.fill();
+    g.restore();
+  };
+  monomer(0); monomer(1.10e-8);
+  /* LHCII trimers */
+  if(chlA>0.02){
+    for(const t of [{x:-9.5e-9,r:3.7e-9},{x:-1.62e-8,r:3.7e-9}]){
+      ellipse(t.x, M.mid, t.r, S.coreH*0.46, 0);
+      g.fillStyle=hexa(P.lhc,.42*chlA/Math.max(a,0.001)); g.fill();
+      g.strokeStyle=hexa(P.chl,.35); g.lineWidth=Math.max(px(1.2e-10),.6); g.stroke();
+    }
+    /* chlorophylls, drawn as porphyrin rings rather than blobs */
+    g.save(); g.globalAlpha = a;
+    for(let i=0;i<ANTENNA.length;i++){
+      const c=ANTENNA[i];
+      if(!onScreen(c.x,c.y,1e-9)) continue;
+      const tw = REDUCED?0:0.22*Math.sin(T*1.7+c.ph);
+      chlHex(c.x, c.y, 0.50e-9, (0.85+tw)*(chlA/Math.max(a,0.001)), c.tag!=='core');
+    }
+    g.restore();
+  }
+  const la=Math.max(0,chlA-0.25)*1.35;
+  label(-1.62e-8, M.mid+2.3e-9, 'LHCII trimer', {a:la, dx:-34, dy:-18, c:'#8ff0bd'});
+  label(-2.6e-9, M.mid+2.4e-9, 'CP43', {a:la, dx:-28, dy:-26, size:10.5});
+  label( 2.8e-9, M.mid+2.4e-9, 'CP47', {a:la, dx:28, dy:-26, size:10.5});
+  label( 1.10e-8, M.mid+S.coreH*0.5, 'the other monomer', {a:la*0.8, dx:34, dy:-20, size:10.5});
+  label( 0, M.mid-S.coreH*0.48-2.6e-9, 'PsbO cap (lumenal)', {a:la*0.85, dx:36, dy:24, size:10.5});
+  g.restore();
+}
+
+/* ============================================================================
+   LAYER 8 — the reaction centre cofactor chain
+   ========================================================================== */
+function drawRC(a, T, logW, phase){
+  const R=GEO.rc;
+  g.save(); g.globalAlpha=a;
+  /* D1/D2 protein scaffold, faint */
+  g.fillStyle=hexa(P.protLo,.35);
+  g.beginPath(); g.roundRect(sx(-3.1e-9), sy(5.6e-9), px(6.2e-9), px(6.4e-9), px(0.7e-9)); g.fill();
+  g.strokeStyle=hexa('#bfeaff',.18); g.lineWidth=.7; g.stroke();
+
+  const chain=[
+    {p:R.p680, r:0.62e-9, c:'#57f0a8', n:'P680', note:'special pair', pair:true},
+    {p:R.pheo, r:0.50e-9, c:'#a9e8ff', n:'pheophytin', note:'3 ps'},
+    {p:R.qa,   r:0.45e-9, c:'#ffd45e', n:'Qₐ', note:'≈ 300 ps'},
+    {p:R.qb,   r:0.45e-9, c:'#ffb35e', n:'Q_B', note:'≈ 200 µs'},
+    {p:R.yz,   r:0.38e-9, c:'#ff9ecb', n:'Tyr Z', note:'20 ns–30 µs'}
+  ];
+  /* transfer arrows */
+  const arrows=[[R.p680,R.pheo],[R.pheo,R.qa],[R.qa,R.qb],[R.oec,R.yz],[R.yz,R.p680]];
+  g.strokeStyle=hexa('#8fb6ff',.45); g.lineWidth=Math.max(px(6e-11),.8); g.setLineDash([px(1.4e-10),px(1.2e-10)]);
+  for(const [p,q] of arrows){ g.beginPath(); g.moveTo(sx(p.x),sy(p.y)); g.lineTo(sx(q.x),sy(q.y)); g.stroke(); }
+  g.setLineDash([]);
+  for(const c of chain){
+    if(c.pair){
+      g.save(); g.globalCompositeOperation='lighter';
+      const X=sx(c.p.x), Y=sy(c.p.y);
+      g.fillStyle=glow(X,Y,40,hexa(c.c,.30),hexa(c.c,0));
+      g.beginPath(); g.arc(X,Y,40,0,TAU); g.fill(); g.restore();
+      chlHex(c.p.x-0.32e-9, c.p.y-0.06e-9, 0.46e-9, 2.6, false);
+      chlHex(c.p.x+0.32e-9, c.p.y+0.06e-9, 0.46e-9, 2.6, false);
+    } else dot(c.p.x, c.p.y, c.r, hexa(c.c,.9), 2.6);
+    label(c.p.x, c.p.y, c.n+'  ·  '+c.note, {a:a*0.95, dx: c.p.x<0?-30:30, dy: c.p.y>3e-9?-20:20, size:10.5, c:c.c});
+  }
+  /* the Mn cluster, until the layer below takes it over */
+  if(logW > -8.90){
+    dot(0,0,0.28e-9,hexa(P.mn,.95),2.2);
+    label(0,0,'Mn₄CaO₅', {a:a*0.95, dx:-34, dy:26, c:P.mn, size:10.5});
+  }
+  g.restore();
+}
+
+/* ============================================================================
+   LAYER 9 — the oxygen-evolving complex, atom by atom
+   ========================================================================== */
+/* Mn4CaO5 "distorted chair", schematic but with the right connectivity:
+   a Mn3CaO4 cubane plus a dangling Mn (Mn4) linked through O5. */
+const OEC = {
+  mn: [ {x:-1.30e-10, y: 1.05e-10, n:'Mn1'},
+        {x: 0.55e-10, y: 1.35e-10, n:'Mn2'},
+        {x: 1.05e-10, y:-0.45e-10, n:'Mn3'},
+        {x:-2.55e-10, y:-0.95e-10, n:'Mn4'} ],
+  ca: {x:-0.35e-10, y:-1.35e-10, n:'Ca'},
+  ox: [ {x:-0.45e-10,y: 1.55e-10}, {x: 1.15e-10,y: 0.55e-10},
+        {x: 0.25e-10,y:-0.15e-10}, {x:-1.35e-10,y:-0.55e-10},
+        {x:-1.95e-10,y: 0.15e-10} ],
+  w:  [ {x:-2.90e-10,y:-1.55e-10}, {x:-3.00e-10,y:-0.15e-10},
+        {x: 0.35e-10,y:-2.05e-10}, {x:-1.30e-10,y:-2.10e-10} ]
+};
+function drawOEC(a, T, logW, sState, oo){
+  g.save(); g.globalAlpha=a;
+  /* bonds */
+  g.strokeStyle=hexa('#ffffff',.22); g.lineWidth=Math.max(px(1.6e-11),.8);
+  const bonds=[[0,0],[0,4],[1,0],[1,1],[2,1],[2,2],[3,4],[3,3]];
+  for(const [mi,oi] of bonds){
+    const m=OEC.mn[mi], o=OEC.ox[oi];
+    g.beginPath(); g.moveTo(sx(m.x),sy(m.y)); g.lineTo(sx(o.x),sy(o.y)); g.stroke();
+  }
+  for(const oi of [2,3]){ const o=OEC.ox[oi];
+    g.beginPath(); g.moveTo(sx(OEC.ca.x),sy(OEC.ca.y)); g.lineTo(sx(o.x),sy(o.y)); g.stroke(); }
+
+  /* atoms */
+  for(let i=0;i<OEC.mn.length;i++){
+    const m=OEC.mn[i];
+    const hot = sState>=1 && i<sState;
+    dot(m.x,m.y,0.62e-10, hexa(hot?'#ff9ab4':P.mn,.95), hot?3.0:1.9);
+    label(m.x,m.y,m.n,{a:a*0.8,dx:i%2?26:-26,dy:i<2?-18:20,size:11,c:P.mn});
+  }
+  dot(OEC.ca.x,OEC.ca.y,0.60e-10,hexa(P.ca,.95),1.6);
+  label(OEC.ca.x,OEC.ca.y,'Ca²⁺',{a:a*0.8,dx:-28,dy:22,size:11,c:P.ca});
+  for(const o of OEC.ox) dot(o.x,o.y,0.38e-10,hexa(P.ox,.9),1.4);
+  /* substrate waters, drawn until they are consumed */
+  for(let i=0;i<OEC.w.length;i++){
+    const w=OEC.w[i];
+    const gone = oo>0 && i<2;
+    if(gone) continue;
+    dot(w.x,w.y,0.40e-10,hexa('#7fd8ff',.8),1.3);
+    dot(w.x-0.55e-10,w.y+0.35e-10,0.20e-10,hexa(P.hy,.8));
+    dot(w.x+0.25e-10,w.y+0.60e-10,0.20e-10,hexa(P.hy,.8));
+  }
+  /* the O-O bond forming, then O2 leaving */
+  if(oo>0){
+    const t=clamp(oo,0,1);
+    const ax = lerp(OEC.w[0].x, -2.30e-10, t), ay = lerp(OEC.w[0].y, -2.5e-10 - t*0.5e-10, t);
+    const bx = lerp(OEC.w[1].x, -1.09e-10, t), by = lerp(OEC.w[1].y, -2.5e-10 - t*0.5e-10, t);
+    g.strokeStyle=hexa('#ff9c8a',.6+0.4*t); g.lineWidth=Math.max(px(2.2e-11),1);
+    g.beginPath(); g.moveTo(sx(ax),sy(ay)); g.lineTo(sx(bx),sy(by)); g.stroke();
+    dot(ax,ay,0.42e-10,hexa(P.ox,.95),2.4+t*2);
+    dot(bx,by,0.42e-10,hexa(P.ox,.95),2.4+t*2);
+    if(t>0.5) label((ax+bx)/2,(ay+by)/2,'O₂  ·  121 pm',{a:a*(t-0.5)*2,dx:34,dy:20,c:P.ox,size:11});
+  }
+  /* Kok cycle readout */
+  const la=Math.max(0,a-0.2)*1.3;
+  label(2.2e-10, -0.7e-10, 'S'+Math.min(sState,4)+' state', {a:la, dx:28, dy:-18, c:'#ffd45e'});
+  g.restore();
+}
+
+/* ============================================================================
+   THE PHOTON — one quantum of 680 nm light, followed to its end
+   ========================================================================== */
+const ST = {}; STATIONS.forEach(s => ST[s.id] = s);
+const seg = (t,a,b) => clamp((t-a)/(b-a), 0, 1);
+
+/* where the photon is absorbed: the far LHCII trimer */
+const ABSORB = ANTENNA[WALK[0]] || ANTENNA[0];
+
+function photonState(t){
+  const s = { phase:'none', x:0, y:0, a:0, sState:0, oo:0, exciton:null, hops:0, charge:null, protons:0 };
+  const tIn  = ST.membrane.t0 - 2.5;
+  const tAbs = ST.psii.t0 + 1.2;
+  const tWalkEnd = ST.psii.t1 - 0.6;
+  const tSep = ST.rc.t0 + 1.4;
+
+  if(t < tIn) { s.phase='incoming-far'; return s; }
+
+  if(t < tAbs){                                  /* flight into the antenna */
+    const k = smooth(seg(t, tIn, tAbs));
+    s.phase='flight'; s.a=1;
+    s.x = lerp(-9.0e-8, ABSORB.x, k);
+    s.y = lerp( 9.0e-8, ABSORB.y, k);
+    return s;
+  }
+  if(t < tWalkEnd){                              /* resonance energy transfer */
+    const k = seg(t, tAbs, tWalkEnd);
+    const f = k*(WALK.length-1);
+    const i = Math.min(Math.floor(f), WALK.length-2);
+    const u = smooth(f-i);
+    const A = ANTENNA[WALK[i]], B = ANTENNA[WALK[i+1]];
+    s.phase='exciton'; s.a=1; s.hops=i+1;
+    s.x = lerp(A.x,B.x,u); s.y = lerp(A.y,B.y,u);
+    return s;
+  }
+  if(t < tSep){                                  /* trapped on P680 */
+    const k = seg(t, tWalkEnd, tSep);
+    const A = ANTENNA[WALK[WALK.length-1]], B = GEO.rc.p680;
+    s.phase='trapped'; s.a=1;
+    s.x = lerp(A.x,B.x,smooth(k)); s.y = lerp(A.y,B.y,smooth(k));
+    return s;
+  }
+
+  /* charge separation, then the electron down the chain */
+  const R = GEO.rc;
+  const legs = [
+    {from:R.p680, to:R.pheo, t0:tSep,       t1:tSep+1.1, tag:'P680* → Pheo  ·  3 ps'},
+    {from:R.pheo, to:R.qa,   t0:tSep+1.1,   t1:tSep+2.2, tag:'Pheo⁻ → Qₐ  ·  ≈ 300 ps'},
+    {from:R.qa,   to:R.qb,   t0:tSep+2.2,   t1:tSep+3.4, tag:'Qₐ⁻ → Q_B  ·  ≈ 200 µs'}
+  ];
+  s.phase='charge'; s.a=1; s.x=R.p680.x; s.y=R.p680.y;
+  for(const L of legs){
+    if(t>=L.t0 && t<L.t1){
+      const u=smooth(seg(t,L.t0,L.t1));
+      s.charge={ x:lerp(L.from.x,L.to.x,u), y:lerp(L.from.y,L.to.y,u), tag:L.tag };
+    }
+  }
+  if(t>=legs[2].t1) s.charge={ x:R.qb.x, y:R.qb.y, tag:'Q_B → plastoquinone pool' };
+
+  /* Kok cycle: four turnovers, compressed into the OEC station */
+  const k0=ST.oec.t0-1.0, k1=ST.oec.t1-0.6;
+  s.sState = Math.min(4, Math.floor(seg(t,k0,k1)*4.001));
+  /* the O-O bond and release */
+  s.oo = seg(t, ST.o2.t0-0.8, ST.o2.t0+3.2);
+  s.protons = Math.min(4, Math.floor(seg(t, ST.o2.t0, ST.o2.t0+2.6)*4.001));
+  return s;
+}
+
+function drawPhoton(ps, T, logW){
+  if(ps.phase==='none'||ps.phase==='incoming-far') return;
+  const bright = band(logW, -9.9, -6.4, .5);
+  if(bright<=0.01) return;
+  g.save(); g.globalAlpha = bright*ps.a; g.globalCompositeOperation='lighter';
+
+  if(ps.phase==='flight'){
+    /* a wave packet: transverse oscillation along the direction of travel */
+    const X=sx(ps.x), Y=sy(ps.y);
+    const dx=ABSORB.x-ps.x, dy=ABSORB.y-ps.y, L=Math.hypot(dx,dy)||1;
+    const ux=dx/L, uy=dy/L, nx=-uy, ny=ux;
+    g.strokeStyle=hexa(P.photon,.55); g.lineWidth=1.4;
+    g.beginPath();
+    for(let i=0;i<=70;i++){
+      const u=i/70, back=u*px(9e-9);
+      const amp=Math.sin(u*TAU*4 - T*10)*(1-u)*px(1.1e-9);
+      const xx=X-ux*back+nx*amp, yy=Y+uy*back+ny*amp;
+      i?g.lineTo(xx,yy):g.moveTo(xx,yy);
+    }
+    g.stroke();
+    g.fillStyle=glow(X,Y,26,hexa(P.photon,.95),hexa(P.photon,0));
+    g.beginPath(); g.arc(X,Y,26,0,TAU); g.fill();
+    g.globalCompositeOperation='source-over';
+    label(ps.x,ps.y,'photon · 680 nm · 1.82 eV',{a:bright,dx:36,dy:-26,c:P.photon});
+    g.restore(); return;
+  }
+
+  /* exciton / trapped excitation — spent once the charge has separated */
+  if(ps.phase==='charge'){
+    g.globalCompositeOperation='lighter';
+    const hX=sx(GEO.rc.p680.x), hY=sy(GEO.rc.p680.y);
+    g.fillStyle=glow(hX,hY,24,hexa('#ff7a6b',.55),hexa('#ff7a6b',0));
+    g.beginPath(); g.arc(hX,hY,24,0,TAU); g.fill();
+    g.globalCompositeOperation='source-over';
+    label(GEO.rc.p680.x,GEO.rc.p680.y,'P680⁺ · +1.25 V',{a:bright*0.9,dx:34,dy:-22,c:'#ff9a8a',size:10.5});
+    if(ps.charge){
+      g.globalCompositeOperation='lighter';
+      const cX=sx(ps.charge.x), cY=sy(ps.charge.y);
+      g.fillStyle=glow(cX,cY,22,hexa(P.charge,.85),hexa(P.charge,0));
+      g.beginPath(); g.arc(cX,cY,22,0,TAU); g.fill();
+      g.globalCompositeOperation='source-over';
+      g.fillStyle=hexa('#e8f0ff',.95);
+      g.beginPath(); g.arc(cX,cY,2.4,0,TAU); g.fill();
+      label(ps.charge.x,ps.charge.y,ps.charge.tag,{a:bright,dx:-34,dy:24,c:P.charge,size:10.5});
+    }
+    if(ps.protons>0){
+      for(let i=0;i<ps.protons;i++){
+        const ph=(T*0.8+i*0.7)%1;
+        dot((-1.2+i*0.8)*1e-10, -2.3e-10-ph*2.2e-10, 0.17e-10, hexa(P.hy,.8*(1-ph)));
+      }
+      label(-3.2e-10,-1.9e-10,'4 H⁺ → lumen',{a:bright*0.8,dx:-28,dy:18,c:P.hy,size:10.5});
+    }
+    g.restore(); return;
+  }
+  const X=sx(ps.x), Y=sy(ps.y);
+  const pulse = 1 + 0.25*Math.sin(T*9);
+  const r = clamp(px(0.9e-9), 9, 30)*pulse;
+  g.fillStyle=glow(X,Y,r*2.2,hexa(P.exciton,.70),hexa(P.exciton,0));
+  g.beginPath(); g.arc(X,Y,r*2.2,0,TAU); g.fill();
+  g.fillStyle=hexa('#fff8d8',.95);
+  g.beginPath(); g.arc(X,Y,clamp(px(0.35e-9),2.2,9),0,TAU); g.fill();
+  g.globalCompositeOperation='source-over';
+  if(ps.phase==='exciton')
+    label(ps.x,ps.y,'excitation · hop '+ps.hops+' · ≈ 100 fs',{a:bright,dx:34,dy:-24,c:P.exciton});
+  if(ps.phase==='trapped')
+    label(ps.x,ps.y,'P680* · trapped',{a:bright,dx:34,dy:-24,c:P.exciton});
+
+  /* the separated charge */
+  if(ps.charge){
+    g.globalCompositeOperation='lighter';
+    const cX=sx(ps.charge.x), cY=sy(ps.charge.y);
+    g.fillStyle=glow(cX,cY,22,hexa(P.charge,.85),hexa(P.charge,0));
+    g.beginPath(); g.arc(cX,cY,22,0,TAU); g.fill();
+    g.globalCompositeOperation='source-over';
+    g.fillStyle=hexa('#e8f0ff',.95);
+    g.beginPath(); g.arc(cX,cY,Math.max(px(0.2e-9),2),0,TAU); g.fill();
+    label(ps.charge.x,ps.charge.y,ps.charge.tag,{a:bright,dx:-34,dy:24,c:P.charge,size:10.5});
+    /* the hole left on P680 */
+    const hX=sx(GEO.rc.p680.x), hY=sy(GEO.rc.p680.y);
+    g.globalCompositeOperation='lighter';
+    g.fillStyle=glow(hX,hY,20,hexa('#ff7a6b',.6),hexa('#ff7a6b',0));
+    g.beginPath(); g.arc(hX,hY,20,0,TAU); g.fill();
+    g.globalCompositeOperation='source-over';
+    label(GEO.rc.p680.x,GEO.rc.p680.y,'P680⁺ · +1.25 V',{a:bright*0.9,dx:34,dy:-22,c:'#ff9a8a',size:10.5});
+  }
+  /* protons dumped into the lumen */
+  if(ps.protons>0){
+    for(let i=0;i<ps.protons;i++){
+      const ph=(T*0.8+i*0.7)%1;
+      const xm=(-1.2+i*0.8)*1e-10, ym=-2.3e-10-ph*2.2e-10;
+      dot(xm,ym,0.17e-10,hexa(P.hy,.8*(1-ph)));
+    }
+    label(-1.0e-10,-3.1e-10,'4 H⁺ → lumen',{a:bright*0.8,dx:-34,dy:20,c:P.hy,size:10.5});
+  }
+  g.restore();
+}
+
+/* the O2 escaping, during the pull-back */
+function drawEscape(t, T, logW){
+  if(t < TOTAL) return;
+  const k = seg(t, TOTAL+0.4, TOTAL+OUTRO);
+  const path = [
+    {x:0, y:0}, {x:2e-7,y:3e-7}, {x:1.2e-6,y:-0.6e-6},
+    {x:6e-6,y:-8e-6}, {x:1.6e-5,y:-3.6e-5}, {x:2.9e-5,y:-7.5e-5},
+    {x:3.1e-5,y:-1.16e-4}, {x:1.1e-3,y:-9.0e-4}, {x:5.0e-3,y:-3.2e-3}
+  ];
+  const f=k*(path.length-1), i=Math.min(Math.floor(f),path.length-2), u=smooth(f-i);
+  const x=lerp(path[i].x,path[i+1].x,u), y=lerp(path[i].y,path[i+1].y,u);
+  const X=sx(x), Y=sy(y);
+  g.save(); g.globalAlpha = 1 - smooth(seg(k,0.78,1.0));
+  g.globalCompositeOperation='lighter';
+  const r = 30 + 14*Math.sin(T*3);
+  g.fillStyle=glow(X,Y,r,hexa(P.ox,.75),hexa(P.ox,0));
+  g.beginPath(); g.arc(X,Y,r,0,TAU); g.fill();
+  g.globalCompositeOperation='source-over';
+  g.fillStyle=hexa('#ffd9d2',.95);
+  g.beginPath(); g.arc(X-4,Y,3.2,0,TAU); g.arc(X+4,Y,3.2,0,TAU); g.fill();
+  g.restore();
+  if(k<0.78) label(x,y,'O₂',{a:1-smooth(seg(k,0.6,0.78)),dx:34,dy:-22,c:P.ox,size:12});
+}
+
+/* ============================================================================
+   FRAME
+   ========================================================================== */
+const LAYERS = [
+  { f:drawLeaf,         lo:-2.60, hi: 0.40 },
+  { f:drawSection,      lo:-4.35, hi:-2.30 },
+  { f:drawCell,         lo:-5.85, hi:-3.85 },
+  { f:drawChloroplast,  lo:-6.30, hi:-4.85 },
+  { f:drawGranum,       lo:-8.20, hi:-5.00 },
+  { f:drawMembrane,     lo:-8.80, hi:-6.50 },
+  { f:drawPSII,         lo:-9.00, hi:-6.70 },
+  { f:drawRC,           lo:-9.05, hi:-7.60 },
+  { f:drawOEC,          lo:-10.0, hi:-8.35 }
+];
+
+let t = 0, playing = false, lastNow = performance.now();
+
+function render(t){
+  const logW = logWAt(t);
+  const fov  = Math.pow(10, logW);
+  mpp = fov / Math.max(W,1);
+  const T = t;
+  const cam = camAt(logW);
+  camX = cam.x + Math.sin(t*0.07)*mpp*W*0.012;
+  camY = cam.y + Math.cos(t*0.05)*mpp*H*0.010;
+
+  /* background: cools and deepens as we descend */
+  const d = inv(logW, -9.6, -1.0);
+  const bg = g.createRadialGradient(W*0.5,H*0.42,0,W*0.5,H*0.42,Math.max(W,H)*0.85);
+  bg.addColorStop(0, 'rgb('+Math.round(6+14*d)+','+Math.round(10+16*d)+','+Math.round(16+10*d)+')');
+  bg.addColorStop(1, '#03060a');
+  g.fillStyle=bg; g.fillRect(0,0,W,H);
+
+  const ps = photonState(t);
+  for(const L of LAYERS){
+    const a = band(logW, L.lo, L.hi);
+    if(a<=0.012) continue;
+    if(L.f===drawOEC) L.f(a,T,logW, ps.sState, ps.oo);
+    else if(L.f===drawRC) L.f(a,T,logW, ps.phase);
+    else L.f(a,T,logW);
+  }
+  drawPhoton(ps, T, logW);
+  drawEscape(t, T, logW);
+  flushLabels();
+
+  /* vignette */
+  const vg=g.createRadialGradient(W*0.5,H*0.5,Math.min(W,H)*0.32,W*0.5,H*0.5,Math.max(W,H)*0.78);
+  vg.addColorStop(0,'rgba(0,0,0,0)'); vg.addColorStop(1,'rgba(0,0,0,.66)');
+  g.fillStyle=vg; g.fillRect(0,0,W,H);
+
+  /* a flash at the moment of charge separation */
+  const fl = 1 - clamp(Math.abs(t-(ST.rc.t0+1.4))/0.45,0,1);
+  if(fl>0){ g.fillStyle='rgba(255,246,214,'+(fl*fl*0.30)+')'; g.fillRect(0,0,W,H); }
+
+  hud(t, logW, fov);
+}
+
+/* ---------- HUD ---------- */
+const $ = id => document.getElementById(id);
+function sig(v){ return v>=100? v.toFixed(0) : v>=10? v.toFixed(0) : v>=1? v.toFixed(v%1?1:0) : v.toFixed(2); }
+function fmtLen(m){
+  if(m>=1)     return sig(m)+' m';
+  if(m>=1e-2)  return sig(m*100)+' cm';
+  if(m>=1e-3)  return sig(m*1e3)+' mm';
+  if(m>=1e-6)  return sig(m*1e6)+' µm';
+  if(m>=1e-9)  return sig(m*1e9)+' nm';
+  if(m>=1e-12) return sig(m*1e12)+' pm';
+  return sig(m*1e10)+' Å';
+}
+function niceLen(m){
+  const e=Math.floor(Math.log10(m)), f=m/Math.pow(10,e);
+  const s = f>=5?5 : f>=2?2 : 1;
+  return s*Math.pow(10,e);
+}
+let lastIdx=-1;
+function hud(t, logW, fov){
+  $('fov').textContent = fmtLen(fov);
+  const e = Math.floor(logW);
+  $('power').innerHTML = '10<sup>'+e+'</sup> m &nbsp;field';
+  const target = niceLen(mpp*150);
+  $('sbar').style.width = Math.round(px(target))+'px';
+  $('snum').textContent = fmtLen(target);
+
+  const {idx, fade} = stationAt(t);
+  if(idx!==lastIdx){
+    const s = STATIONS[idx];
+    $('kicker').textContent = 'station '+(idx+1)+' / '+STATIONS.length;
+    $('title').textContent = s.title;
+    $('sub').textContent   = s.sub;
+    $('body').textContent  = s.body;
+    $('fact').textContent  = s.fact;
+    lastIdx = idx;
+    if(AUDIO.on) AUDIO.chime(idx);
+  }
+  const box = document.querySelector('.stage');
+  box.style.opacity = (0.25 + 0.75*fade).toFixed(3);
+
+  const p = clamp(t/RUN,0,1);
+  $('fill').style.width = (p*100)+'%';
+  $('knob').style.left  = (p*100)+'%';
+  const m=Math.floor(t/60), sec=Math.floor(t%60);
+  $('clock').textContent = m+':'+String(sec).padStart(2,'0');
+}
+
+/* ---------- audio: a drone whose timbre opens as the scale closes ---------- */
+const AUDIO = {
+  on:false, ctx:null, osc:[], filt:null, gain:null,
+  init(){
+    if(this.ctx) return;
+    const C = window.AudioContext||window.webkitAudioContext; if(!C) return;
+    this.ctx = new C();
+    this.gain = this.ctx.createGain(); this.gain.gain.value = 0.0;
+    this.filt = this.ctx.createBiquadFilter(); this.filt.type='lowpass'; this.filt.frequency.value=400; this.filt.Q.value=2;
+    this.filt.connect(this.gain); this.gain.connect(this.ctx.destination);
+    [55, 82.41, 110, 164.81].forEach((f,i)=>{
+      const o=this.ctx.createOscillator(); o.type = i%2?'sine':'triangle';
+      o.frequency.value = f * (1 + (i-1.5)*0.0016);
+      const gg=this.ctx.createGain(); gg.gain.value = 0.26/(i+1);
+      o.connect(gg); gg.connect(this.filt); o.start();
+      this.osc.push({o,gg});
+    });
+  },
+  toggle(){
+    this.init(); if(!this.ctx) return false;
+    this.on = !this.on;
+    if(this.on) this.ctx.resume();
+    this.gain.gain.linearRampToValueAtTime(this.on?0.12:0.0, this.ctx.currentTime+0.6);
+    return this.on;
+  },
+  update(logW){
+    if(!this.ctx||!this.on) return;
+    const d = inv(logW,-9.6,-1.0);
+    this.filt.frequency.setTargetAtTime(240 + (1-d)*2600, this.ctx.currentTime, 0.4);
+  },
+  chime(i){
+    if(!this.ctx||!this.on) return;
+    const scale=[0,2,4,7,9,12,14,16,19,21];
+    const f = 220*Math.pow(2, scale[i%scale.length]/12);
+    const o=this.ctx.createOscillator(), gg=this.ctx.createGain();
+    o.type='sine'; o.frequency.value=f*2;
+    gg.gain.setValueAtTime(0, this.ctx.currentTime);
+    gg.gain.linearRampToValueAtTime(0.09, this.ctx.currentTime+0.02);
+    gg.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime+3.2);
+    o.connect(gg); gg.connect(this.ctx.destination); o.start(); o.stop(this.ctx.currentTime+3.3);
+  }
+};
+
+/* ---------- controls ---------- */
+function setPlaying(v){ playing=v; $('play').textContent = v?'Pause':'Play'; }
+function goto(nt){ t=clamp(nt,0,RUN); lastIdx=-1; $('endcard').classList.remove('on'); }
+$('play').onclick = ()=> setPlaying(!playing);
+$('back').onclick = ()=>{ const {idx}=stationAt(t); const k=Math.max(0, (t>STATIONS[idx].t0+1.2? idx : idx-1)); goto(STATIONS[k].t0); };
+$('fwd').onclick  = ()=>{ const {idx}=stationAt(t); goto(idx+1<STATIONS.length? STATIONS[idx+1].t0 : TOTAL+0.1); };
+$('sound').onclick= ()=>{ $('sound').textContent = AUDIO.toggle()? 'Sound on':'Sound off'; };
+const track=$('track');
+function scrub(ev){
+  const r=track.getBoundingClientRect();
+  const cx=(ev.touches?ev.touches[0].clientX:ev.clientX);
+  goto(clamp((cx-r.left)/r.width,0,1)*RUN);
+}
+let dragging=false;
+track.addEventListener('pointerdown',e=>{dragging=true;track.setPointerCapture(e.pointerId);scrub(e);});
+track.addEventListener('pointermove',e=>{ if(dragging) scrub(e); });
+track.addEventListener('pointerup',  e=>{dragging=false;});
+addEventListener('keydown',e=>{
+  if(e.key===' '){ e.preventDefault(); setPlaying(!playing); }
+  if(e.key==='ArrowRight') $('fwd').click();
+  if(e.key==='ArrowLeft')  $('back').click();
+});
+
+$('startbtn').onclick = ()=>{ $('opencard').classList.remove('on'); goto(0); setPlaying(true); };
+$('againbtn').onclick = ()=>{ $('endcard').classList.remove('on'); goto(0); setPlaying(true); };
+
+/* ---------- deep links: ?s=<station 0-9> or ?t=<seconds>, &still=1 to hold ---------- */
+(function deepLink(){
+  const q = new URLSearchParams(location.search);
+  const si = q.get('s'), tt = q.get('t');
+  if(si===null && tt===null) return;
+  if(si!==null){ const i=clamp(parseInt(si,10)||0,0,STATIONS.length-1); t = STATIONS[i].t0 + STATIONS[i].hold*0.6; }
+  else { t = clamp(parseFloat(tt)||0, 0, RUN); }
+  const oc=document.getElementById('opencard'); oc.classList.remove('on'); oc.style.display='none';
+  lastIdx = -1;
+  setPlaying(q.get('still') !== '1');
+})();
+
+/* ---------- loop ---------- */
+function frame(now){
+  const dt = Math.min(0.05, (now-lastNow)/1000); lastNow = now;
+  if(playing){
+    t += dt;
+    if(t >= RUN){ t = RUN; setPlaying(false); $('endcard').classList.add('on'); }
+  }
+  render(t);
+  AUDIO.update(logWAt(t));
+  requestAnimationFrame(frame);
+}
+render(0);
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
